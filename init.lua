@@ -94,7 +94,8 @@ vim.api.nvim_create_user_command('TerminalEsp', function()
 
   vim.cmd('botright split')
   vim.cmd('resize 12')
-  vim.cmd('terminal cmd.exe /K "C:\\Espressif\\frameworks\\esp-idf-v5.4\\export.bat"')
+ -- vim.cmd('terminal cmd.exe /K "C:\\Espressif\\frameworks\\esp-idf-v5.4\\export.bat"')
+  vim.cmd('terminal cmd.exe /K "export.bat"')
 
   terminal_buf_id = vim.api.nvim_get_current_buf()
   vim.api.nvim_buf_set_name(terminal_buf_id, "term://ESP32")

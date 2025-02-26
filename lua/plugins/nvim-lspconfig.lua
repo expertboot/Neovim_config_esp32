@@ -33,7 +33,7 @@ return {
   "neovim/nvim-lspconfig",
   config = function()
     require('lspconfig').clangd.setup {
-      cmd = { "C:/Espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clangd", "--background-index", "--log=error" },
+    --  cmd = { "C:/Espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clangd", "--background-index", "--log=error" },
     }
   end
 }

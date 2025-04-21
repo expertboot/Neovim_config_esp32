@@ -1,6 +1,8 @@
 -- Кодировка UTF-8
 vim.opt.encoding = 'utf-8'
 
+vim.g.mapleader = " " -- Пробел в качестве спец клавиши SPC - leader
+
 -- Игнорировать регистр при поиске
 vim.opt.ignorecase = true
 
@@ -13,10 +15,10 @@ vim.opt.hlsearch = true
 -- Интерактивный поиск
 vim.opt.incsearch = true
 
--- Размер табов - 2
-vim.opt.tabstop = 2
-vim.opt.softtabstop = 2
-vim.opt.shiftwidth = 2
+-- Размер табов - 4
+vim.opt.tabstop = 4
+vim.opt.softtabstop = 4
+vim.opt.shiftwidth = 4
 
 -- Превратить табы в пробелы
 vim.opt.expandtab = true
@@ -52,6 +54,11 @@ vim.opt.ttyfast = true
 --vim.cmd('colorscheme sonokai')
 
 
+vim.api.nvim_create_user_command("W", "w", {})
+vim.api.nvim_create_user_command("Q", "q", {})
+vim.api.nvim_create_user_command("WQ", "wq", {})
+vim.api.nvim_create_user_command("Wq", "wq", {})
+
 -- Встроенный плагин для распознавания отступов
 vim.cmd('filetype plugin indent on')
 
@@ -64,8 +71,6 @@ vim.api.nvim_create_autocmd('BufEnter', {
   end
 })
 
-
-vim.g.mapleader = " " -- Пробел в качестве спец клавиши SPC - leader
 
 --   Копирование сообщения ошибки/предупредления
 vim.keymap.set("n", "<leader>ce", function()
@@ -81,71 +86,6 @@ end, { silent = true })
 
 --           ТЕРМИНАЛ ДЛЯ ESP-IDF
 
-
-local terminal_buf_id = nil
-local terminal_win_id = nil
-
--- Создание терминала ESP-IDF
-vim.api.nvim_create_user_command('TerminalEsp', function()
-  if terminal_buf_id then
-    print("Терминал уже существует.")
-    return
-  end
-
-  vim.cmd('botright split')
-  vim.cmd('resize 12')
- -- vim.cmd('terminal cmd.exe /K "C:\\Espressif\\frameworks\\esp-idf-v5.4\\export.bat"')
-  vim.cmd('terminal cmd.exe /K "export.bat"')
-
-  terminal_buf_id = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_name(terminal_buf_id, "term://ESP32")
-  terminal_win_id = vim.api.nvim_get_current_win()
-end, { desc = "Запуск терминала с ESP-IDF внизу текущей вкладки" })
-
--- Скрытие терминала ESP-IDF
-vim.api.nvim_create_user_command('HideTerminalEsp', function()
-  if terminal_win_id then
-    vim.api.nvim_win_close(terminal_win_id, true)
-    terminal_win_id = nil
-  else
-    print("Терминал не найден!")
-  end
-end, { desc = "Скрыть терминал ESP-IDF только если он открыт" })
-
--- Показ скрытого терминала ESP-IDF
-vim.api.nvim_create_user_command('ShowTerminalEsp', function()
-  if terminal_buf_id then
-    -- Проверяем, существует ли окно с нужным буфером
-    local windows = vim.api.nvim_list_wins()
-    for _, win in ipairs(windows) do
-      if vim.api.nvim_win_get_buf(win) == terminal_buf_id then
-        vim.api.nvim_set_current_win(win)
-        terminal_win_id = win
-        return
-      end
-    end
-
-    -- Если окно не найдено, создаем новое
-    vim.cmd('botright split')
-    vim.cmd('resize 12')
-    local new_win_id = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_buf(new_win_id, terminal_buf_id)
-    terminal_win_id = new_win_id
-  else
-    print("Терминал не найден!")
-  end
-end, { desc = "Показать терминал ESP-IDF, если он скрыт" })
-
--- Горячая клавиша для открытия терминала ESP-IDF
-vim.keymap.set("n", "<leader>te", ":TerminalEsp<CR>", { desc = "Открыть терминал ESP-IDF" })
--- Горячая клавиша для скрытия терминала ESP-IDF
-vim.keymap.set("n", "<leader>th", ":HideTerminalEsp<CR>", { desc = "Скрыть терминал ESP-IDF" })
--- Горячая клавиша для показа спрятанного терминала ESP-IDF
-vim.keymap.set("n", "<leader>ts", ":ShowTerminalEsp<CR>", { desc = "Показать терминал ESP-IDF" })
-
-
-
-
 -- ******************************************************************************************************************
 
 
@@ -157,5 +97,27 @@ vim.api.nvim_create_autocmd("VimEnter", {
     require("neo-tree.command").execute({ toggle = true, dir = vim.loop.cwd() })
   end,
 })
+
+
+-- Автозагрузка project_config.lua если он есть в корне проекта
+local project_config = vim.fn.getcwd() .. "/neovim_config.lua"
+if vim.fn.filereadable(project_config) == 1 then
+  dofile(project_config)
+end
+
+
+local project_root = vim.fn.findfile(".nvim.lua", ".;")
+if project_root ~= "" then
+  dofile(vim.fn.fnamemodify(project_root, ":p"))
+end
+
+
+
+vim.o.exrc = true         -- разрешает локальные конфиги
+vim.o.secure = true       -- запрещает запуск опасных команд в локальных exrc-файлах
+
+
+-- авто фикс предепреждения в коде от LSP сервера - SPC + c + a
+vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Code Action" })
 
 

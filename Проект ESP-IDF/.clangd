@@ -1,0 +1,15 @@
+CompileFlags:
+  Remove: [
+    "-fno-shrink-wrap",
+    "-fstrict-volatile-bitfields", 
+    "-fno-tree-switch-conversion",
+    "-mlongcalls"
+  ]
+  Add: [
+    "-I", "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include",
+    "-I", "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/lib/gcc/xtensa-esp-elf/14.2.0/include-fixed",
+    "-I", "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/include",
+    "-I", "C:/Espressif/tools/xtensa-esp-elf/esp-14.2.0_20241119/xtensa-esp-elf/xtensa-esp-elf/include",
+    "-target", "xtensa"
+  ]
+

@@ -1,4 +1,9 @@
 
+-- УКАЗЫВАЕМ ИСПОЛЬЗУЕМЫЙ CLANG
+vim.g.lsp_clangd_binary = "C:/Espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clangd.exe"
+
+
+
 --           ТЕРМИНАЛ ДЛЯ ESP-ADF
 
 

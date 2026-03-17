@@ -2,7 +2,7 @@ return {
   "neovim/nvim-lspconfig",
   dependencies = { "hrsh7th/cmp-nvim-lsp" },
   config = function()
-    -- 1. Хоткеи (без изменений)
+    -- 1. Хоткеи при подключении LSP
     vim.api.nvim_create_autocmd('LspAttach', {
       group = vim.api.nvim_create_augroup('UserLspConfig', {}),
       callback = function(event)
@@ -16,49 +16,47 @@ return {
       end,
     })
 
-    -- 2. Подготовка возможностей (capabilities)
+    -- 2. Capabilities (для автодополнения)
     local capabilities = vim.lsp.protocol.make_client_capabilities()
     local has_cmp, cmp_nvim_lsp = pcall(require, "cmp_nvim_lsp")
     if has_cmp then
       capabilities = cmp_nvim_lsp.default_capabilities(capabilities)
     end
 
-    -- 3. Настройка clangd (ESP32 + обычный)
-    local esp_path = "C:/Espressif/tools/esp-clang/esp-18.1.2_20240912/esp-clang/bin/clangd.exe"
+    -- 3. Настройка CLANGD через новый API
+    -- Берем путь из глобальной переменной (которую мы задаем в .nvim.lua проекта)
+    local clang_cmd = vim.g.esp_path or "clangd"
 
     vim.lsp.config('clangd', {
-      -- Добавляем capabilities прямо сюда
       capabilities = capabilities,
-      -- Настройки запуска
       install = {
-        cmd = { "clangd", "--background-index", "--offset-encoding=utf-16" },
+        cmd = {
+          clang_cmd,
+          "--background-index",
+          "--offset-encoding=utf-16",
+          "--query-driver=**",
+          "--log=error",
+        },
       },
+      -- Файлы-маркеры корня проекта
       root_markers = { "compile_commands.json", "sdkconfig", ".git" },
-      
-      on_new_config = function(new_config, root_dir)
-        if root_dir and (root_dir:match("C:/_ESP32") or vim.fn.filereadable(root_dir .. "/sdkconfig") == 1) then
-          -- В новом API меняем cmd в new_config
-          new_config.cmd = { 
-            esp_path, 
-            "--background-index", 
-            "--log=error", 
-            "--offset-encoding=utf-16" 
-          }
-        end
-      end,
     })
+    
+    -- Включаем clangd
     vim.lsp.enable('clangd')
 
-    -- 4. Настройка lua_ls (с поддержкой автодополнения)
+    -- 4. Настройка LUA_LS
     vim.lsp.config('lua_ls', {
-      capabilities = capabilities, -- Обязательно добавляем сюда!
+      capabilities = capabilities,
       settings = {
         Lua = {
           diagnostics = { globals = { 'vim' } },
           workspace = { checkThirdParty = false },
-        }
-      }
+        },
+      },
     })
+    
+    -- Включаем lua_ls
     vim.lsp.enable('lua_ls')
   end
 }

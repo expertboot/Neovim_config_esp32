@@ -91,7 +91,19 @@ vim.keymap.set('n', '<Tab>', ':tabnext<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<S-Tab>', ':tabprevious<CR>', { noremap = true, silent = true })
 
 -- В нормальном режиме мапим все русские символы на английские
-vim.opt.langmap = 'ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ;ABCDEFGHIJKLMNOPQRSTUVWXYZ,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz'
+ vim.opt.langmap = 'ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ;ABCDEFGHIJKLMNOPQRSTUVWXYZ,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz'
+
+-- Позволяет использовать команды на русской раскладке (Normal mode)
+--local function map_rus()
+ --   local utf8_chars = 'йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,'
+ --   local ascii_chars = 'qwertyuiop[]asdfghjkl;\'zxcvbnm,./QWERTYUIOP{}ASDFGHJKL:"ZXCVBNM<>?'
+    
+ --   vim.opt.langmap = vim.fn.escape(utf8_chars, ' ,."\\') .. ';' .. vim.fn.escape(ascii_chars, ' ,."\\')
+--end
+
+--map_rus()
+
+
 
 -- Сброс подсветки поиска при нажатии Esc в нормальном режиме
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>', { noremap = true, silent = true })
@@ -127,10 +139,13 @@ end, { silent = true })
 
 require("config.lazy")
 
--- открывает neoTree при запуске программы 
+-- Открывает neoTree при запуске программы (безопасный вызов через команду)
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
-    require("neo-tree.command").execute({ toggle = true, dir = vim.loop.cwd() })
+    local ok, nt_command = pcall(require, "neo-tree.command")
+    if ok then
+      nt_command.execute({ action = "show", source = "filesystem" })
+    end
   end,
 })
 
@@ -159,7 +174,6 @@ vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Code Action
 
 -- ************************ Вывод диагностической информации от LSP *********************
 -- Включаем всплывающее окно ошибок и предуприждения 
-
 -- Настройка отображения диагностик (ошибок)
 vim.diagnostic.config({
   virtual_text = false, -- Отключаем текст ошибки в конце строки (чтобы не загромождать)
@@ -176,7 +190,6 @@ vim.diagnostic.config({
     prefix = "",
   },
 })
-
 -- Автокоманда: показывать окно с ошибкой при наведении курсора
 vim.api.nvim_create_autocmd("CursorHold", {
   buffer = bufnr,
@@ -192,9 +205,6 @@ vim.api.nvim_create_autocmd("CursorHold", {
     vim.diagnostic.open_float(nil, opts)
   end
 })
-
-
-
 -- Переход к следующей/предыдущей ошибке
 vim.keymap.set('n', '[d', vim.diagnostic.goto_prev, { desc = 'Go to previous diagnostic message' })
 vim.keymap.set('n', ']d', vim.diagnostic.goto_next, { desc = 'Go to next diagnostic message' })
@@ -205,151 +215,140 @@ vim.keymap.set('n', '<leader>e', vim.diagnostic.setloclist, { desc = 'Open diagn
 vim.keymap.set('n', 'gl', vim.diagnostic.open_float, { desc = 'Show diagnostic under cursor' })
 -- Или по нажатию заглавной K (традиционный способ в Neovim)
 vim.keymap.set('n', 'K', vim.diagnostic.open_float, { desc = 'Show diagnostic under cursor' })
-
+-- *************************************************************************
 
 
 -------------------------------------- Окно вывод ком портов в WINDOWS -----------------------------------
 ---------------------------------------------- :SerialPorts ----------------------------------------------
-
--- Храним ID буфера и окна вне функции
+-- 📡 АСИНХРОННЫЙ ВЫВОД COM ПОРТОВ
 local serial_buf = nil
 local serial_win = nil
 
 local function show_serial_ports()
-    -- 1. Получаем данные
-	
-	local cmd = [[powershell -NoProfile -ExecutionPolicy Bypass -Command "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\(COM\d+\)' } | Select-Object -ExpandProperty Name"]]
-    --local cmd = [[powershell -Command "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\(COM\d+\)' } | Select-Object -ExpandProperty Name"]]
-    local handle = io.popen(cmd)
-    local result = handle:read("*a")
-    handle:close()
-
-    if result == "" or result == nil then
-        result = "No active COM ports found."
-    end
-
-    local replacements = {
-        ["PCIe to High Speed Serial Port"] = "PCI",
-        ["Silicon Labs CP210x USB to UART Bridge"] = "CP210x",
-        ["USB-SERIAL CH340"] = "CH340",
-        ["Standard Serial over Bluetooth link"] = "BT Serial",
-        -- Добавляем фильтр для русской версии Windows:
-        ["Стандартный последовательный порт по соединению Bluetooth"] = "Bluetooth",
-        ["Стандартный последовательный порт по соединению"] = "" -- на всякий случай
-    }
-
-    local raw_lines = vim.split(result, "\r?\n")
-    local clean_lines = { " Active Serial Devices:", " -----------------------" }
-    
-    for _, line in ipairs(raw_lines) do
-        local port = line:match("%((COM%d+)%)")
-        if port then
-            -- 1. Очищаем описание от (COMxx)
-            local desc = line:gsub("%s*%(COM%d+%)", ""):gsub("^%s*", ""):gsub("%s*$", "")
-
-            -- 2. Умная фильтрация
-            if desc:find("Bluetooth") or desc:find("Блютуз") then
-                desc = "Bluetooth"
-            elseif desc:find("CP210x") then
-                desc = "CP210x (Silicon Labs)"
-            elseif desc:find("CH340") then
-                desc = "CH340 (USB-Serial)"
-            elseif desc:find("PCIe") then
-                desc = "PCIe Serial"
-            else
-                -- 3. Если ничего не совпало, просто удаляем стандартную "воду"
-                desc = desc:gsub("Стандартный последовательный порт по соединению", "")
-                desc = desc:gsub("Standard Serial over Bluetooth link", "")
-                -- Убираем лишние пробелы по краям после вырезания
-                desc = desc:gsub("^%s*", ""):gsub("%s*$", "")
-            end
-
-            -- Если описание всё же пустое
-            if desc == "" then desc = "Generic Device" end
-            
-            table.insert(clean_lines, string.format(" %-7s │ %s", port, desc))
-        end
-    end
-
-    -- 2. Управление буфером (создаем или используем старый)
+    -- 1. Подготовка окна и буфера
     if not serial_buf or not vim.api.nvim_buf_is_valid(serial_buf) then
         serial_buf = vim.api.nvim_create_buf(false, true)
-        -- Настраиваем клавиши только один раз при создании буфера
-        vim.keymap.set('n', 'q', function() vim.api.nvim_win_close(0, true) end, { buffer = serial_buf, silent = true })
-        vim.keymap.set('n', '<Esc>', function() vim.api.nvim_win_close(0, true) end, { buffer = serial_buf, silent = true })
-		
-		vim.keymap.set('n', '<CR>', function()
-    local line = vim.api.nvim_get_current_line()
-    -- Ищем строго COM и цифры после него
-    local port = line:match("(COM%d+)") 
-    
-    if port then
-        -- Дополнительная подстраховка: удаляем всё, что не буквы и не цифры
-        port = port:gsub("[^%w]", "")
+        -- Клавиши закрытия
+        local close_opts = { buffer = serial_buf, silent = true }
+        vim.keymap.set('n', 'q', function() vim.api.nvim_win_close(0, true) end, close_opts)
+        vim.keymap.set('n', '<Esc>', function() vim.api.nvim_win_close(0, true) end, close_opts)
         
-        -- Используем встроенную функцию Neovim для работы с клипбордом напрямую
-        -- Это надежнее, чем ручной вызов регистров в данной ситуации
-        vim.schedule(function()
-            local success = pcall(vim.fn.setreg, '+', port)
-            if success then
-                print("✅ Copied: " .. port)
-            else
-                print("❌ Clipboard error (win32yank failed)")
+        -- Копирование по Enter
+        vim.keymap.set('n', '<CR>', function()
+            local line = vim.api.nvim_get_current_line()
+            local port = line:match("(COM%d+)") 
+            if port then
+                vim.fn.setreg('+', port)
+                print("✅ Copied to clipboard: " .. port)
+                vim.api.nvim_win_close(0, true)
             end
-        end)
-        
-        vim.api.nvim_win_close(0, true)
-    end
-end, { buffer = serial_buf, silent = true })
+        end, close_opts)
     end
 
-    -- Обновляем текст в буфере
-    vim.api.nvim_buf_set_lines(serial_buf, 0, -1, false, clean_lines)
-	
-		-- Подсветим номера портов (COMxx) зеленым цветом
-	vim.api.nvim_buf_add_highlight(serial_buf, -1, "String", 0, 0, -1) 
-	vim.api.nvim_buf_add_highlight(serial_buf, -1, "Comment", 1, 0, -1)
-	for i = 2, #clean_lines - 1 do
-		vim.api.nvim_buf_add_highlight(serial_buf, -1, "Keyword", i, 1, 8)
-	end
+    -- 2. Сразу выводим сообщение о загрузке
+    local loading_text = { " 📡 Scanning ports...", " Please wait..." }
+    vim.api.nvim_buf_set_lines(serial_buf, 0, -1, false, loading_text)
 
-    -- 3. Расчет геометрии
-    local max_width = 30
-    for _, l in ipairs(clean_lines) do
-        if #l > max_width then max_width = #l end
-    end
-
-    local term_height = 0
-    for _, win_id in ipairs(vim.api.nvim_list_wins()) do
-        local bufnr = vim.api.nvim_win_get_buf(win_id)
-        if vim.bo[bufnr].buftype == 'terminal' then
-            term_height = vim.api.nvim_win_get_height(win_id)
-            break
-        end
-    end
-
+    -- 3. Настройка окна (сначала маленькое для загрузки)
     local opts = {
         relative = 'editor',
-        width = max_width + 2,
-        height = #clean_lines,
-        col = vim.o.columns - max_width - 4,
-        row = vim.o.lines - term_height - #clean_lines - 3, 
+        width = 25,
+        height = #loading_text,
+        col = vim.o.columns - 30,
+        row = vim.o.lines - 10, 
         style = 'minimal',
         border = 'rounded',
         title = " Ports ",
         title_pos = "center"
     }
 
--- 4. Управление окном (Logic: Toggle/Update)
-    if serial_win and vim.api.nvim_win_is_valid(serial_win) then
-        -- Если окно уже открыто, просто обновляем его содержимое и размер
-        vim.api.nvim_win_set_config(serial_win, opts)
-        -- Опционально: переносим фокус в окно при обновлении
-        vim.api.nvim_set_current_win(serial_win)
-    else
-        -- Если окна нет — открываем
+    if not serial_win or not vim.api.nvim_win_is_valid(serial_win) then
         serial_win = vim.api.nvim_open_win(serial_buf, true, opts)
+    else
+        vim.api.nvim_win_set_config(serial_win, opts)
     end
+
+    -- 4. АСИНХРОННЫЙ ЗАПУСК POWERSHELL
+    local cmd = "powershell"
+    local args = {
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " ..
+        "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\\(COM\\d+\\)' } | " ..
+        "Select-Object -ExpandProperty Name"
+    }
+
+    local stdout = vim.loop.new_pipe(false)
+    local results = {}
+
+    -- Запускаем процесс в фоновом режиме
+    vim.loop.spawn(cmd, {
+        args = args,
+        stdio = {nil, stdout, nil}
+    }, function()
+        stdout:read_stop()
+        stdout:close()
+    end)
+
+    -- Читаем вывод по мере поступления
+    stdout:read_start(function(err, data)
+        assert(not err, err)
+        if data then
+            table.insert(results, data)
+        else
+            -- КОГДА ДАННЫЕ ПОЛНОСТЬЮ ПОЛУЧЕНЫ:
+            vim.schedule(function()
+                local full_result = table.concat(results)
+                
+                -- Логика фильтрации (твоя оригинальная)
+                local raw_lines = vim.split(full_result, "\r?\n")
+                local clean_lines = { " Active Serial Devices:", " -----------------------" }
+                
+                for _, line in ipairs(raw_lines) do
+                    local port = line:match("%((COM%d+)%)")
+                    if port then
+                        local desc = line:gsub("%s*%(COM%d+%)", ""):gsub("^%s*", ""):gsub("%s*$", "")
+                        -- Умная фильтрация имен
+                        if desc:find("Bluetooth") then desc = "Bluetooth"
+                        elseif desc:find("CP210x") then desc = "CP210x (UART)"
+                        elseif desc:find("CH340") then desc = "CH340 (USB)"
+                        end
+                        if desc == "" then desc = "Generic Device" end
+                        table.insert(clean_lines, string.format(" %-7s │ %s", port, desc))
+                    end
+                end
+
+                if #clean_lines <= 2 then
+                    table.insert(clean_lines, " No active COM ports.")
+                end
+
+                -- 5. Обновляем буфер и размер окна финальными данными
+                if vim.api.nvim_buf_is_valid(serial_buf) then
+                    vim.api.nvim_buf_set_lines(serial_buf, 0, -1, false, clean_lines)
+                    
+                    -- Считаем ширину
+                    local final_width = 25
+                    for _, l in ipairs(clean_lines) do
+                        if #l > final_width then final_width = #l end
+                    end
+
+                    -- Перерисовываем окно под новый контент
+                    if vim.api.nvim_win_is_valid(serial_win) then
+                        vim.api.nvim_win_set_config(serial_win, {
+                            width = final_width + 2,
+                            height = #clean_lines
+                        })
+                        
+                        -- Добавляем подсветку
+                        vim.api.nvim_buf_add_highlight(serial_buf, -1, "String", 0, 0, -1) 
+                        vim.api.nvim_buf_add_highlight(serial_buf, -1, "Comment", 1, 0, -1)
+                        for i = 2, #clean_lines - 1 do
+                            vim.api.nvim_buf_add_highlight(serial_buf, -1, "Keyword", i, 1, 8)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
 end
 
 vim.api.nvim_create_user_command('SerialPorts', show_serial_ports, {})
@@ -366,26 +365,107 @@ vim.keymap.set('n', '<leader>pc', function()
         vim.api.nvim_win_close(serial_win, true)
     end
 end, { desc = "Close Serial Ports Window" })
+-- *************************************************************************
 
 
 
+-- *********** АВТОМАТИЧЕСКОЕ ПЕРЕКЛЮЧЕНИЕ РАСКЛАДКИ ПРИ CMD *************
+vim.api.nvim_create_autocmd("CmdlineEnter", {
+  callback = function()
+    -- Вызываем утилиту для переключения на английский (код 1033)
+    -- Мы используем silent = true, чтобы не было всплывающих окон консоли
+    vim.fn.jobstart("im-select.exe 1033")
+  end,
+})
+-- *************************************************************************
 
 
 
--- Меняем цвет всплывающего окан ввода команд CMDLINE
-
-vim.api.nvim_set_hl(0, "NoiceCmdlinePopup", { bg = "#3d2b1f", fg = "#ebdbb2" })
-
--- Попробуй это, если специфичные для Noice группы не реагируют
+-- ********* Меняем цвет всплывающего окан ввода команд CMDLINE ***********
 vim.api.nvim_set_hl(0, "FloatBorder", { fg = "#ff9e64", bg = "#3d2b1f" })
-
-
 vim.api.nvim_create_autocmd("ColorScheme", {
   callback = function()
     vim.api.nvim_set_hl(0, "NoiceCmdlinePopupBorder", { fg = "#ff9e64" })
-    -- и остальные...
   end
 })
+-- *************************************************************************
 
 
+-- ******************** Функциона переменовывания табов ********************
+function MyTabLine()
+  local s = ''
+  for i = 1, vim.fn.tabpagenr('$') do
+    -- Выбираем подсветку (активная или нет вкладка)
+    if i == vim.fn.tabpagenr() then
+      s = s .. '%#TabLineSel#'
+    else
+      s = s .. '%#TabLine#'
+    end
+
+    -- Номер вкладки (для кликов мышкой)
+    s = s .. '%' .. i .. 'T'
+
+    -- ЛОГИКА ИМЕНИ:
+    local buflist = vim.fn.tabpagebuflist(i)
+    local winnr = vim.fn.tabpagewinnr(i)
+    local bufnr = buflist[winnr]
+    local tab_handle = vim.api.nvim_list_tabpages()[i]
+    
+    -- Пытаемся взять наше ручное имя
+    local ok, custom_name = pcall(vim.api.nvim_tabpage_get_var, tab_handle, "custom_name")
+    
+    if ok and custom_name and custom_name ~= "" then
+      s = s .. '  📂 ' .. custom_name .. '  '
+    else
+      -- Если ручного нет, берем имя активного файла
+      local name = vim.fn.bufname(bufnr)
+      if name == '' then
+        s = s .. ' [No Name] '
+      else
+        s = s .. ' ' .. vim.fn.fnamemodify(name, ':t') .. ' '
+      end
+    end
+  end
+  s = s .. '%#TabLineFill#%T'
+  return s
+end
+
+-- Включаем наш кастомный таблайн
+vim.opt.tabline = '%!v:lua.MyTabLine()'
+
+vim.api.nvim_create_user_command('TabRename', function(opts)
+    local current_tab = vim.api.nvim_get_current_tabpage()
+    if opts.args == "" then
+        pcall(vim.api.nvim_tabpage_del_var, current_tab, "custom_name")
+    else
+        vim.api.nvim_tabpage_set_var(current_tab, "custom_name", opts.args)
+    end
+    vim.cmd("redrawtabline")
+end, { nargs = '?' })
+-- *************************************************************************
+
+
+
+
+
+-- ************************ Настройка цветов таблайна **********************
+local function setup_tabline_colors()
+    -- Активная вкладка: Текст белый, фон темно-серый/синеватый, жирный шрифт
+    vim.cmd('highlight TabLineSel guifg=#FFFFFF guibg=#3b4252 gui=bold')
+    
+    -- Неактивные вкладки: Текст серый, фон более темный, без выделения
+    vim.cmd('highlight TabLine guifg=#707070 guibg=#2e3440 gui=none')
+    
+    -- Фон самой полосы (пустое место): Тот же фон, что и у неактивных
+    vim.cmd('highlight TabLineFill guibg=#2e3440 gui=none')
+end
+
+-- Запускаем настройку
+setup_tabline_colors()
+
+-- Чтобы цвета не слетали при смене цветовой схемы (colorscheme)
+vim.api.nvim_create_autocmd("ColorScheme", {
+    callback = setup_tabline_colors
+})
+-- *************************************************************************
 

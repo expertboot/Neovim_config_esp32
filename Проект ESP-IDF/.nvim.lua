@@ -4,82 +4,91 @@ vim.g.lsp_clangd_binary = "C:/Espressif/tools/esp-clang/esp-18.1.2_20240912/esp-
 
 
 
---           ТЕРМИНАЛ ДЛЯ ESP-ADF
 
+-- ---------------------------------------------------------------------------
+-- 🚀 ТЕРМИНАЛ ESP-IDF С ПРИВЯЗКОЙ К ВКЛАДКАМ (TABS)
+-- ---------------------------------------------------------------------------
 
-local terminal_buf_id = nil
-local terminal_win_id = nil
+local term_bufs = {} -- Таблица для хранения ID буферов терминалов {tab_id = buf_id}
+local term_wins = {} -- Таблица для хранения ID окон терминалов {tab_id = win_id}
 
--- Создание терминала ESP-IDF
+-- Функция для получения ID текущей вкладки
+local function get_tab()
+  return vim.api.nvim_get_current_tabpage()
+end
+
+-- 1. Команда запуска терминала
 vim.api.nvim_create_user_command('TerminalEsp', function()
-  if terminal_buf_id then
-    print("Терминал уже существует.")
+  local current_tab = get_tab()
+
+  if term_bufs[current_tab] and vim.api.nvim_buf_is_valid(term_bufs[current_tab]) then
+    print("Терминал для этой вкладки уже существует. Используйте :ShowTerminalEsp")
     return
   end
 
   vim.cmd('botright split')
   vim.cmd('resize 12')
 
- -- ищем корневой каталог проекта по файлу .nvim.lua
-local util = require("lspconfig.util")
-local root_dir = util.root_pattern(".git", ".nvim.lua")(vim.fn.expand("%:p"))
+  local util = require("lspconfig.util")
+  local root_dir = util.root_pattern(".git", ".nvim.lua", "sdkconfig")(vim.fn.expand("%:p"))
 
-if root_dir then
-  vim.cmd('terminal cmd.exe /K "cd /d ' .. root_dir .. ' && call C:\\Espressif\\frameworks\\esp-idf-v5.4\\export.bat"')
-else
-  print("❗ Не удалось определить корень проекта")
-end
-
-  -- vim.cmd('terminal cmd.exe /K "startup_env.bat"')
-  -- vim.cmd('terminal cmd.exe /K "C:\\Espressif\\frameworks\\esp-adf\\export.bat"')
-
-  terminal_buf_id = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_name(terminal_buf_id, "term://ESP32")
-  terminal_win_id = vim.api.nvim_get_current_win()
-end, { desc = "Запуск терминала с ESP-IDF внизу текущей вкладки" })
-
--- Скрытие терминала ESP-IDF
-vim.api.nvim_create_user_command('HideTerminalEsp', function()
-  if terminal_win_id then
-    vim.api.nvim_win_close(terminal_win_id, true)
-    terminal_win_id = nil
+  if root_dir then
+    -- Запуск терминала с экспортом окружения
+    vim.cmd('terminal cmd.exe /K "cd /d ' .. root_dir .. ' && call C:\\Espressif\\frameworks\\esp-idf-v5.4\\export.bat"')
+    
+    local buf_id = vim.api.nvim_get_current_buf()
+    local win_id = vim.api.nvim_get_current_win()
+    
+    -- Сохраняем ID именно для ЭТОЙ вкладки
+    term_bufs[current_tab] = buf_id
+    term_wins[current_tab] = win_id
+    
+    vim.api.nvim_buf_set_name(buf_id, "ESP-Terminal-" .. current_tab)
   else
-    print("Терминал не найден!")
+    print("❗ Не удалось определить корень проекта")
   end
-end, { desc = "Скрыть терминал ESP-IDF только если он открыт" })
+end, { desc = "Запуск терминала ESP-IDF для текущей вкладки" })
 
--- Показ скрытого терминала ESP-IDF
+-- 2. Скрытие терминала
+vim.api.nvim_create_user_command('HideTerminalEsp', function()
+  local current_tab = get_tab()
+  local win_id = term_wins[current_tab]
+
+  if win_id and vim.api.nvim_win_is_valid(win_id) then
+    vim.api.nvim_win_close(win_id, true)
+    term_wins[current_tab] = nil
+  else
+    print("Окно терминала на этой вкладке не найдено!")
+  end
+end, { desc = "Скрыть терминал текущей вкладки" })
+
+-- 3. Показ скрытого терминала
 vim.api.nvim_create_user_command('ShowTerminalEsp', function()
-  if terminal_buf_id then
-    -- Проверяем, существует ли окно с нужным буфером
-    local windows = vim.api.nvim_list_wins()
-    for _, win in ipairs(windows) do
-      if vim.api.nvim_win_get_buf(win) == terminal_buf_id then
+  local current_tab = get_tab()
+  local buf_id = term_bufs[current_tab]
+
+  if buf_id and vim.api.nvim_buf_is_valid(buf_id) then
+    -- Проверяем, не открыт ли он уже
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(win) == buf_id then
         vim.api.nvim_set_current_win(win)
-        terminal_win_id = win
+        term_wins[current_tab] = win
         return
       end
     end
 
-    -- Если окно не найдено, создаем новое
+    -- Если скрыт — воссоздаем окно
     vim.cmd('botright split')
     vim.cmd('resize 12')
     local new_win_id = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_buf(new_win_id, terminal_buf_id)
-    terminal_win_id = new_win_id
+    vim.api.nvim_win_set_buf(new_win_id, buf_id)
+    term_wins[current_tab] = new_win_id
   else
-    print("Терминал не найден!")
+    print("Терминал для этой вкладки еще не создан!")
   end
-end, { desc = "Показать терминал ESP-IDF, если он скрыт" })
+end, { desc = "Показать терминал текущей вкладки" })
 
--- Горячая клавиша для открытия терминала ESP-IDF
-vim.keymap.set("n", "<leader>te", ":TerminalEsp<CR>", { desc = "Открыть терминал ESP-IDF" })
--- Горячая клавиша для скрытия терминала ESP-IDF
-vim.keymap.set("n", "<leader>th", ":HideTerminalEsp<CR>", { desc = "Скрыть терминал ESP-IDF" })
--- Горячая клавиша для показа спрятанного терминала ESP-IDF
-vim.keymap.set("n", "<leader>ts", ":ShowTerminalEsp<CR>", { desc = "Показать терминал ESP-IDF" })
-
-
-
-
--- ******************************************************************************************************************
+-- Горячие клавиши (остаются прежними, но работают контекстно)
+vim.keymap.set("n", "<leader>te", ":TerminalEsp<CR>", { silent = true })
+vim.keymap.set("n", "<leader>th", ":HideTerminalEsp<CR>", { silent = true })
+vim.keymap.set("n", "<leader>ts", ":ShowTerminalEsp<CR>", { silent = true })

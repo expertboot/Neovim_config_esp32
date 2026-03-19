@@ -1,30 +1,28 @@
 return {
   "nvim-neo-tree/neo-tree.nvim",
   branch = "v3.x",
-  dependencies = {
-    "nvim-lua/plenary.nvim",
-    "nvim-tree/nvim-web-devicons", -- not strictly required, but recommended
-    "MunifTanjim/nui.nvim",
-    -- {"3rd/image.nvim", opts = {}}, -- Optional image support in preview window: See `# Preview Mode` for more information
-  },
   config = function()
-    -- Настройки плагина NeoTree
     require("neo-tree").setup({
       filesystem = {
-        filtered_items = {
-          visible = true,
-          hide_dotfiles = false,  -- Показывать скрытые файлы (начинающиеся с .)
-          hide_gitignored = false, -- Показывать файлы, игнорируемые git
+        commands = {
+          open_project_in_new_tab = function(state)
+           local node = state.tree:get_node()
+			local path = (node.type == "directory") and node.path or vim.fn.fnamemodify(node.path, ":h")
+			local project_name = vim.fn.fnamemodify(path, ":t")
+
+			vim.cmd("tabnew")
+			vim.cmd("tcd " .. vim.fn.fnameescape(path))
+			-- Просто ставим переменную, таблайн сам её отрисует
+			vim.api.nvim_tabpage_set_var(0, "custom_name", project_name)
+			vim.cmd("Neotree show")
+          end,
         },
       },
       window = {
         mappings = {
-          ['<leader>o'] = 'open',  -- Открывает файл в новой вкладке
-          ['<leader>h'] = 'open_split',  -- Открывает файл в горизонтальном разделении
-          ['<leader>m'] = 'toggle',  -- Закрыть или открыть NeoTree
+          ["T"] = "open_project_in_new_tab",
         },
       },
     })
   end,
 }
-

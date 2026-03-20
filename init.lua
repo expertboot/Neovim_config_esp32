@@ -90,6 +90,8 @@ vim.keymap.set('n', '<C-l>', '<C-w>l', { noremap = true })
 vim.keymap.set('n', '<Tab>', ':tabnext<CR>', { noremap = true, silent = true })
 vim.keymap.set('n', '<S-Tab>', ':tabprevious<CR>', { noremap = true, silent = true })
 
+vim.o.exrc = true
+
 -- В нормальном режиме мапим все русские символы на английские
  vim.opt.langmap = 'ФИСВУАПРШОЛДЬТЩЗЙКЫЕГМЦЧНЯ;ABCDEFGHIJKLMNOPQRSTUVWXYZ,фисвуапршолдьтщзйкыегмцчня;abcdefghijklmnopqrstuvwxyz'
 
@@ -140,11 +142,31 @@ end, { silent = true })
 require("config.lazy")
 
 -- Открывает neoTree при запуске программы (безопасный вызов через команду)
+--vim.api.nvim_create_autocmd("VimEnter", {
+--  callback = function()
+--    local ok, nt_command = pcall(require, "neo-tree.command")
+--    if ok then
+--      nt_command.execute({ action = "show", source = "filesystem" })
+--    end
+--  end,
+--})
+
+-- Умное открытие Neo-tree или Dashboard
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
-    local ok, nt_command = pcall(require, "neo-tree.command")
-    if ok then
-      nt_command.execute({ action = "show", source = "filesystem" })
+    -- Проверяем, есть ли аргументы при запуске (например, nvim file.txt или nvim .)
+    local has_args = vim.fn.argc() > 0
+    
+    if has_args then
+      -- Если мы открыли файл или папку, запускаем Neo-tree
+      local ok, nt_command = pcall(require, "neo-tree.command")
+      if ok then
+        nt_command.execute({ action = "show", source = "filesystem" })
+      end
+    else
+      -- Если аргументов нет, Neo-tree не трогаем (дашборд откроется сам)
+      -- Но если вдруг Neo-tree открылся по дефолту, можно его явно закрыть:
+      -- vim.cmd("Neotree close")
     end
   end,
 })
@@ -371,13 +393,13 @@ end, { desc = "Close Serial Ports Window" })
 
 -- *********** АВТОМАТИЧЕСКОЕ ПЕРЕКЛЮЧЕНИЕ РАСКЛАДКИ ПРИ CMD *************
 vim.api.nvim_create_autocmd("CmdlineEnter", {
-  callback = function()
-    -- Вызываем утилиту для переключения на английский (код 1033)
-    -- Мы используем silent = true, чтобы не было всплывающих окон консоли
-    vim.fn.jobstart("im-select.exe 1033")
-  end,
-})
--- *************************************************************************
+    callback = function()
+        -- Проверяем, что вошли именно в режим команд (:), а не поиска (/)
+        if vim.v.event.cmdtype == ':' then
+            vim.fn.jobstart("im-select.exe 1033")
+        end
+    end,
+})-- *************************************************************************
 
 
 
@@ -469,3 +491,67 @@ vim.api.nvim_create_autocmd("ColorScheme", {
 })
 -- *************************************************************************
 
+
+-- Если зашли в nvim без файлов, открываем Dashboard
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function()
+    if vim.fn.argc() == 0 and vim.api.nvim_buf_get_name(0) == "" then
+      vim.cmd("Dashboard")
+    end
+  end,
+})
+
+
+
+
+-- Глобальная автокоманда для авто-открытия Neo-tree при входе в файл
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  group = vim.api.nvim_create_augroup("NeotreeAutoOpen", { clear = true }),
+  callback = function()
+    -- Условия:
+    -- 1. Это не дашборд
+    -- 2. Это обычный файл (не терминал, не справка)
+    -- 3. Буфер имеет имя (не пустой новый файл)
+    if vim.bo.filetype ~= "dashboard" 
+       and vim.bo.buftype == "" 
+       and vim.api.nvim_buf_get_name(0) ~= "" then
+      
+      -- Используем schedule, чтобы дать Neovim закончить отрисовку файла
+      vim.schedule(function()
+        local ok, nt_command = pcall(require, "neo-tree.command")
+        if ok then
+          -- Открываем дерево, но оставляем фокус на коде (reveal = true подсветит файл)
+          nt_command.execute({ 
+            action = "show", 
+            source = "filesystem", 
+            position = "left", 
+            toggle = false,
+            reveal = true 
+          })
+        end
+      end)
+    end
+  end,
+})
+
+-- Дополнительно: Умная команда для вызова дашборда вручную
+vim.api.nvim_create_user_command('Dash', function()
+  -- Сначала закрываем дерево, чтобы дашборд мог центрироваться по всей ширине
+  local ok, nt_command = pcall(require, "neo-tree.command")
+  if ok then
+    nt_command.execute({ action = "close" })
+  end
+  vim.cmd("Dashboard")
+end, {})
+
+
+
+-- Принудительное чтение локального конфига при смене директории
+vim.api.nvim_create_autocmd("DirChanged", {
+  callback = function()
+    local local_config = vim.fn.getcwd() .. "/.nvim.lua"
+    if vim.loop.fs_stat(local_config) then
+      vim.cmd("source " .. local_config)
+    end
+  end,
+})
